@@ -1,0 +1,55 @@
+name: FileBot Organizer
+description: Watch a folder and organize media files using FileBot CLI
+version: 0.1.0
+slug: filebot_organizer
+url: https://github.com/your-github-username/filebot-for-HA
+startup: services
+boot: auto
+init: false
+arch:
+  - aarch64
+  - amd64
+privileged: false
+cap_add:
+  - SYS_ADMIN
+devices:
+  - /dev/sda
+  - /dev/sda1
+  - /dev/sdb
+  - /dev/sdb1
+
+options:
+  watch_folder: /mnt/sda1/upload
+  output_folder: /mnt/sda1/external_media
+  movie_output_folder: /mnt/sda1/external_media/movies
+  show_output_folder: /mnt/sda1/external_media/shows/<SHOWNAME>
+  movie_path_validation: strict
+  show_path_validation: create_last
+  mounts:
+    - /dev/sda1
+  format: "{n}/{s00e00} - {t}"
+  movie_format: "{n} ({y})"
+  show_format: "{s00e00} - {t}"
+  database: TheTVDB
+  action: move
+  conflict: auto
+  poll_interval: 30
+  use_inotify: true
+
+schema:
+  watch_folder: str
+  output_folder: str
+  movie_output_folder: str
+  show_output_folder: str
+  movie_path_validation: list(none|strict|create_last)
+  show_path_validation: list(none|strict|create_last)
+  mounts:
+    - str
+  format: str
+  movie_format: str
+  show_format: str
+  database: list(TheTVDB|TMDB|AniDB|TheMovieDB)
+  action: list(move|copy|hardlink|symlink)
+  conflict: list(auto|skip|override)
+  poll_interval: int(5,3600)
+  use_inotify: bool

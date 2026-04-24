@@ -1,0 +1,413 @@
+#!/usr/bin/with-contenv bashio
+set -euo pipefail
+
+readonly FILEBOT_JAR="/data/filebot.jar"
+readonly SEEN_FILE="/data/.seen_files"
+
+WATCH_DIR=""
+OUTPUT_DIR=""
+MOVIE_OUTPUT_TEMPLATE=""
+SHOW_OUTPUT_TEMPLATE=""
+FORMAT=""
+MOVIE_FORMAT=""
+SHOW_FORMAT=""
+DATABASE=""
+ACTION=""
+CONFLICT=""
+POLL_INTERVAL="30"
+USE_INOTIFY="true"
+MOVIE_PATH_VALIDATION="strict"
+SHOW_PATH_VALIDATION="create_last"
+
+MOUNTED_POINTS=()
+
+cleanup() {
+    bashio::log.info "Shutting down add-on"
+
+    for mnt in "${MOUNTED_POINTS[@]}"; do
+        if mountpoint -q "$mnt"; then
+            bashio::log.info "Unmounting $mnt"
+            umount "$mnt" || bashio::log.warning "Failed to unmount $mnt"
+        fi
+    done
+}
+
+trap cleanup SIGTERM SIGINT EXIT
+
+normalize_null() {
+    local value="$1"
+
+    if [[ "$value" == "null" ]]; then
+        printf ''
+        return 0
+    fi
+
+    printf '%s' "$value"
+}
+
+sanitize_path_component() {
+    local value="$1"
+
+    value="$(echo "$value" | sed -E 's#[/\\]+#-#g; s/[._-]+/ /g; s/[[:space:]]+/ /g; s/^ +| +$//g')"
+    printf '%s' "$value"
+}
+
+extract_year() {
+    local name="$1"
+
+    echo "$name" | grep -Eo '(19|20)[0-9]{2}' | head -n 1 || true
+}
+
+detect_media_type() {
+    local name="$1"
+
+    if [[ "$name" =~ [Ss][0-9]{1,2}[Ee][0-9]{1,2} ]] || [[ "$name" =~ [0-9]{1,2}[xX][0-9]{2} ]]; then
+        printf 'show'
+    else
+        printf 'movie'
+    fi
+}
+
+parse_show_name() {
+    local name="$1"
+    local cleaned
+    local show_name
+
+    cleaned="$(sanitize_path_component "$name")"
+    show_name="$(echo "$cleaned" | sed -E 's/[[:space:]]+([Ss][0-9]{1,2}[Ee][0-9]{1,2}|[0-9]{1,2}[xX][0-9]{2}).*$//')"
+    show_name="$(echo "$show_name" | sed -E 's/[[:space:]]+(19|20)[0-9]{2}$//')"
+    show_name="$(sanitize_path_component "$show_name")"
+
+    if [[ -z "$show_name" ]]; then
+        show_name="Unknown Show"
+    fi
+
+    printf '%s' "$show_name"
+}
+
+parse_movie_name() {
+    local name="$1"
+    local cleaned
+    local movie_name
+
+    cleaned="$(sanitize_path_component "$name")"
+    movie_name="$(echo "$cleaned" | sed -E 's/[[:space:]]+(19|20)[0-9]{2}.*$//')"
+    movie_name="$(echo "$movie_name" | sed -E 's/[[:space:]]+(480p|720p|1080p|2160p|x264|x265|h264|h265|bluray|brrip|web[ -]?dl|webrip|dvdrip).*$//I')"
+    movie_name="$(sanitize_path_component "$movie_name")"
+
+    if [[ -z "$movie_name" ]]; then
+        movie_name="Unknown Movie"
+    fi
+
+    printf '%s' "$movie_name"
+}
+
+resolve_output_template() {
+    local template="$1"
+    local media_type="$2"
+    local show_name="$3"
+    local movie_name="$4"
+    local title="$5"
+    local year="$6"
+    local output
+
+    output="$template"
+    output="${output//<MEDIA_TYPE>/$media_type}"
+    output="${output//<TYPE>/$media_type}"
+    output="${output//<SHOWNAME>/$show_name}"
+    output="${output//<SHOW_NAME>/$show_name}"
+    output="${output//<MOVIENAME>/$movie_name}"
+    output="${output//<MOVIE_NAME>/$movie_name}"
+    output="${output//<TITLE>/$title}"
+    output="${output//<YEAR>/$year}"
+    output="$(echo "$output" | sed -E 's#//+#/#g; s#/$##')"
+
+    printf '%s' "$output"
+}
+
+validate_output_path() {
+    local path="$1"
+    local mode="$2"
+    local parent
+
+    case "$mode" in
+        none)
+            return 0
+            ;;
+        strict)
+            if [[ -d "$path" ]]; then
+                return 0
+            fi
+            bashio::log.warning "Strict path validation failed: $path does not exist"
+            return 1
+            ;;
+        create_last)
+            if [[ -d "$path" ]]; then
+                return 0
+            fi
+
+            parent="$(dirname "$path")"
+            if [[ -d "$parent" ]]; then
+                mkdir -p "$path"
+                return 0
+            fi
+
+            bashio::log.warning "create_last validation failed: parent directory missing for $path"
+            return 1
+            ;;
+        *)
+            bashio::log.warning "Unknown path validation mode '$mode', using strict"
+            if [[ -d "$path" ]]; then
+                return 0
+            fi
+            return 1
+            ;;
+    esac
+}
+
+download_filebot() {
+    if [[ -s "$FILEBOT_JAR" ]]; then
+        bashio::log.info "Using existing FileBot jar at $FILEBOT_JAR"
+        return 0
+    fi
+
+    bashio::log.info "Downloading FileBot jar to $FILEBOT_JAR"
+
+    if curl -fsSL "https://get.filebot.net/filebot.jar" -o "$FILEBOT_JAR"; then
+        bashio::log.info "FileBot jar downloaded successfully"
+        return 0
+    fi
+
+    local index_file
+    local jar_url
+    index_file="$(mktemp)"
+
+    curl -fsSL "https://get.filebot.net" -o "$index_file"
+    jar_url="$(grep -Eo 'https://[^" ]+\.jar' "$index_file" | head -n 1 || true)"
+    rm -f "$index_file"
+
+    if [[ -z "$jar_url" ]]; then
+        bashio::log.fatal "Could not determine FileBot jar download URL"
+        exit 1
+    fi
+
+    curl -fsSL "$jar_url" -o "$FILEBOT_JAR"
+    bashio::log.info "FileBot jar downloaded from discovered URL"
+}
+
+read_config() {
+    WATCH_DIR="$(normalize_null "$(bashio::config 'watch_folder')")"
+    OUTPUT_DIR="$(normalize_null "$(bashio::config 'output_folder')")"
+    MOVIE_OUTPUT_TEMPLATE="$(normalize_null "$(bashio::config 'movie_output_folder')")"
+    SHOW_OUTPUT_TEMPLATE="$(normalize_null "$(bashio::config 'show_output_folder')")"
+    FORMAT="$(normalize_null "$(bashio::config 'format')")"
+    MOVIE_FORMAT="$(normalize_null "$(bashio::config 'movie_format')")"
+    SHOW_FORMAT="$(normalize_null "$(bashio::config 'show_format')")"
+    DATABASE="$(normalize_null "$(bashio::config 'database')")"
+    ACTION="$(normalize_null "$(bashio::config 'action')")"
+    CONFLICT="$(normalize_null "$(bashio::config 'conflict')")"
+    POLL_INTERVAL="$(normalize_null "$(bashio::config 'poll_interval')")"
+    USE_INOTIFY="$(normalize_null "$(bashio::config 'use_inotify')")"
+    MOVIE_PATH_VALIDATION="$(normalize_null "$(bashio::config 'movie_path_validation')")"
+    SHOW_PATH_VALIDATION="$(normalize_null "$(bashio::config 'show_path_validation')")"
+
+    if [[ -z "$WATCH_DIR" ]]; then
+        bashio::log.fatal "watch_folder must be set"
+        exit 1
+    fi
+
+    if [[ -z "$MOVIE_OUTPUT_TEMPLATE" ]]; then
+        MOVIE_OUTPUT_TEMPLATE="$OUTPUT_DIR"
+    fi
+
+    if [[ -z "$SHOW_OUTPUT_TEMPLATE" ]]; then
+        SHOW_OUTPUT_TEMPLATE="$OUTPUT_DIR"
+    fi
+
+    if [[ -z "$MOVIE_OUTPUT_TEMPLATE" || -z "$SHOW_OUTPUT_TEMPLATE" ]]; then
+        bashio::log.fatal "movie_output_folder and show_output_folder must be set (or provide output_folder fallback)"
+        exit 1
+    fi
+
+    if [[ -z "$MOVIE_FORMAT" ]]; then
+        if [[ -n "$FORMAT" ]]; then
+            MOVIE_FORMAT="$FORMAT"
+        else
+            MOVIE_FORMAT="{n} ({y})"
+        fi
+    fi
+
+    if [[ -z "$SHOW_FORMAT" ]]; then
+        if [[ -n "$FORMAT" ]]; then
+            SHOW_FORMAT="$FORMAT"
+        else
+            SHOW_FORMAT="{s00e00} - {t}"
+        fi
+    fi
+
+    if [[ -z "$MOVIE_PATH_VALIDATION" ]]; then
+        MOVIE_PATH_VALIDATION="strict"
+    fi
+
+    if [[ -z "$SHOW_PATH_VALIDATION" ]]; then
+        SHOW_PATH_VALIDATION="create_last"
+    fi
+
+    if [[ -z "$POLL_INTERVAL" ]]; then
+        POLL_INTERVAL="30"
+    fi
+
+    if [[ -z "$USE_INOTIFY" ]]; then
+        USE_INOTIFY="true"
+    fi
+
+    mkdir -p "$WATCH_DIR"
+    touch "$SEEN_FILE"
+}
+
+mount_local_partitions() {
+    local mounts_json
+    mounts_json="$(bashio::config 'mounts')"
+
+    if [[ "$mounts_json" == "null" ]]; then
+        bashio::log.info "No mounts configured"
+        return 0
+    fi
+
+    while IFS= read -r mount_item; do
+        mount_item="$(normalize_null "$mount_item")"
+        [[ -z "$mount_item" ]] && continue
+
+        local dev
+        local partition
+        local mnt
+
+        if [[ "$mount_item" == /dev/* ]]; then
+            dev="$mount_item"
+            partition="${mount_item##*/}"
+        else
+            partition="$mount_item"
+            dev="/dev/$mount_item"
+        fi
+
+        mnt="/mnt/$partition"
+
+        if [[ ! -b "$dev" ]]; then
+            bashio::log.warning "Device not found: $dev"
+            continue
+        fi
+
+        mkdir -p "$mnt"
+
+        if mountpoint -q "$mnt"; then
+            bashio::log.info "$mnt already mounted"
+            continue
+        fi
+
+        bashio::log.info "Mounting $dev at $mnt"
+        if mount -t auto "$dev" "$mnt"; then
+            MOUNTED_POINTS+=("$mnt")
+        else
+            bashio::log.warning "Failed to mount $dev"
+        fi
+    done < <(echo "$mounts_json" | jq -r '.[]?')
+}
+
+run_filebot() {
+    local file="$1"
+    local filename
+    local name_no_ext
+    local media_type
+    local year
+    local show_name
+    local movie_name
+    local title
+    local output_template
+    local output_dir
+    local format
+    local validation_mode
+
+    if [[ ! -f "$file" ]]; then
+        bashio::log.warning "Skipping non-file path: $file"
+        return 0
+    fi
+
+    filename="${file##*/}"
+    name_no_ext="${filename%.*}"
+    media_type="$(detect_media_type "$name_no_ext")"
+    year="$(extract_year "$name_no_ext")"
+    show_name="$(parse_show_name "$name_no_ext")"
+    movie_name="$(parse_movie_name "$name_no_ext")"
+
+    if [[ "$media_type" == "show" ]]; then
+        title="$show_name"
+        output_template="$SHOW_OUTPUT_TEMPLATE"
+        format="$SHOW_FORMAT"
+        validation_mode="$SHOW_PATH_VALIDATION"
+    else
+        title="$movie_name"
+        output_template="$MOVIE_OUTPUT_TEMPLATE"
+        format="$MOVIE_FORMAT"
+        validation_mode="$MOVIE_PATH_VALIDATION"
+    fi
+
+    output_dir="$(resolve_output_template "$output_template" "$media_type" "$show_name" "$movie_name" "$title" "$year")"
+
+    if ! validate_output_path "$output_dir" "$validation_mode"; then
+        bashio::log.warning "Skipping file due to output path validation failure: $file"
+        return 0
+    fi
+
+    bashio::log.info "Processing file: $file (type=$media_type, output=$output_dir)"
+
+    if ! java -jar "$FILEBOT_JAR" -rename "$file" \
+        --output "$output_dir" \
+        --format "$format" \
+        --db "$DATABASE" \
+        --action "$ACTION" \
+        --conflict "$CONFLICT" \
+        -non-strict; then
+        bashio::log.warning "FileBot failed for $file"
+    fi
+}
+
+poll_loop() {
+    bashio::log.info "Using polling mode every $POLL_INTERVAL seconds"
+
+    while true; do
+        while IFS= read -r -d '' filepath; do
+            if ! grep -Fxq "$filepath" "$SEEN_FILE"; then
+                echo "$filepath" >> "$SEEN_FILE"
+                run_filebot "$filepath"
+            fi
+        done < <(find "$WATCH_DIR" -type f -print0)
+
+        sleep "$POLL_INTERVAL"
+    done
+}
+
+inotify_loop() {
+    bashio::log.info "Using inotify mode"
+
+    inotifywait -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" |
+    while IFS= read -r filepath; do
+        run_filebot "$filepath"
+    done
+}
+
+main() {
+    read_config
+    mount_local_partitions
+    download_filebot
+
+    if [[ "$USE_INOTIFY" == "true" ]] && command -v inotifywait >/dev/null 2>&1; then
+        if ! inotify_loop; then
+            bashio::log.warning "inotify loop exited, falling back to polling"
+            poll_loop
+        fi
+    else
+        poll_loop
+    fi
+}
+
+main
