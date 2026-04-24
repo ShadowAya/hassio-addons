@@ -8,11 +8,9 @@ This repository contains a Home Assistant community add-on that watches for new 
 
 ## Quick Start
 
-1. Publish this repository to GitHub.
-2. Update `repository.yaml` with your real GitHub URL.
-3. In Home Assistant, go to **Settings -> Add-ons -> Add-on Store -> Repositories**.
-4. Add your repository URL.
-5. Install the **FileBot Organizer** add-on.
+1. In Home Assistant, go to **Settings -> Add-ons -> Add-on Store -> Repositories**.
+2. Add your repository URL.
+3. Install the **FileBot** add-on.
 
 ## Notes
 

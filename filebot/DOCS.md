@@ -2,6 +2,9 @@
 
 This add-on watches a folder for new media files and runs FileBot CLI to rename and organize them.
 
+> ⚠️ **Disclaimer**
+> This add-on is a beta, I'm not an experienced hassio add-on developer. Feedback and PRs are welcomed!
+
 ## Features
 
 - Watches for files via `inotifywait` or polling fallback
