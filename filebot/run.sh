@@ -7,7 +7,6 @@ readonly SEEN_FILE="/data/.seen_files"
 WATCH_DIR=""
 MOVIE_OUTPUT_TEMPLATE=""
 SHOW_OUTPUT_TEMPLATE=""
-FORMAT=""
 MOVIE_FORMAT=""
 SHOW_FORMAT=""
 DATABASE=""
@@ -198,7 +197,6 @@ read_config() {
     WATCH_DIR="$(normalize_null "$(bashio::config 'watch_folder')")"
     MOVIE_OUTPUT_TEMPLATE="$(normalize_null "$(bashio::config 'movie_output_folder')")"
     SHOW_OUTPUT_TEMPLATE="$(normalize_null "$(bashio::config 'show_output_folder')")"
-    FORMAT="$(normalize_null "$(bashio::config 'format')")"
     MOVIE_FORMAT="$(normalize_null "$(bashio::config 'movie_format')")"
     SHOW_FORMAT="$(normalize_null "$(bashio::config 'show_format')")"
     DATABASE="$(normalize_null "$(bashio::config 'database')")"
@@ -219,20 +217,9 @@ read_config() {
         exit 1
     fi
 
-    if [[ -z "$MOVIE_FORMAT" ]]; then
-        if [[ -n "$FORMAT" ]]; then
-            MOVIE_FORMAT="$FORMAT"
-        else
-            MOVIE_FORMAT="{n} ({y})"
-        fi
-    fi
-
-    if [[ -z "$SHOW_FORMAT" ]]; then
-        if [[ -n "$FORMAT" ]]; then
-            SHOW_FORMAT="$FORMAT"
-        else
-            SHOW_FORMAT="{s00e00} - {t}"
-        fi
+    if [[ -z "$MOVIE_FORMAT" || -z "$SHOW_FORMAT" ]]; then
+        bashio::log.fatal "movie_format and show_format must both be set"
+        exit 1
     fi
 
     if [[ -z "$MOVIE_PATH_VALIDATION" ]]; then

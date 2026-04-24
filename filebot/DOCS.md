@@ -25,7 +25,6 @@ movie_path_validation: strict
 show_path_validation: create_last
 mounts:
   - /dev/sda1
-format: "{n}/{s00e00} - {t}"
 movie_format: "{n} ({y})"
 show_format: "{s00e00} - {t}"
 database: TheTVDB
@@ -43,7 +42,6 @@ use_inotify: true
 - `movie_path_validation` (enum): `none`, `strict`, `create_last`.
 - `show_path_validation` (enum): `none`, `strict`, `create_last`.
 - `mounts` (list): Devices or partition names to mount under `/mnt`, for example `/dev/sda1` or `sda1`.
-- `format` (string): FileBot format expression.
 - `movie_format` (string): FileBot format for movie files.
 - `show_format` (string): FileBot format for TV show files.
 - `database` (enum): `TheTVDB`, `TMDB`, `AniDB`, or `TheMovieDB`.

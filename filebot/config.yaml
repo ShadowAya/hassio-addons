@@ -25,7 +25,6 @@ options:
   show_path_validation: create_last
   mounts:
     - /dev/sda1
-  format: "{n}/{s00e00} - {t}"
   movie_format: "{n} ({y})"
   show_format: "{s00e00} - {t}"
   database: TheTVDB
@@ -42,7 +41,6 @@ schema:
   show_path_validation: list(none|strict|create_last)
   mounts:
     - str
-  format: str
   movie_format: str
   show_format: str
   database: list(TheTVDB|TMDB|AniDB|TheMovieDB)
