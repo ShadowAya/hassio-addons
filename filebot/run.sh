@@ -164,6 +164,17 @@ validate_output_path() {
     esac
 }
 
+log_mount_listing() {
+    local mnt="$1"
+    local max_lines="25"
+
+    bashio::log.info "Mount listing for $mnt (first $max_lines lines)"
+    ls -la "$mnt" 2>&1 | head -n "$max_lines" |
+    while IFS= read -r line; do
+        bashio::log.info "[ls $mnt] $line"
+    done
+}
+
 download_filebot() {
     if [[ -x "$FILEBOT_BIN" ]]; then
         bashio::log.info "Using existing FileBot CLI at $FILEBOT_BIN"
@@ -265,13 +276,14 @@ read_config() {
         USE_INOTIFY="true"
     fi
 
-    mkdir -p "$WATCH_DIR"
     touch "$SEEN_FILE"
 }
 
 mount_local_partitions() {
     local mounts_json
+    local mount_failures
     mounts_json="$(bashio::config 'mounts')"
+    mount_failures="0"
 
     if [[ "$mounts_json" == "null" ]]; then
         bashio::log.info "No mounts configured"
@@ -298,6 +310,7 @@ mount_local_partitions() {
 
         if [[ ! -b "$dev" ]]; then
             bashio::log.warning "Device not found: $dev"
+            mount_failures=$((mount_failures + 1))
             continue
         fi
 
@@ -305,6 +318,7 @@ mount_local_partitions() {
 
         if mountpoint -q "$mnt"; then
             bashio::log.info "$mnt already mounted"
+            log_mount_listing "$mnt"
             continue
         fi
 
@@ -312,9 +326,31 @@ mount_local_partitions() {
         if mount -t auto "$dev" "$mnt"; then
             MOUNTED_POINTS+=("$mnt")
         else
+            bashio::log.warning "Mount command failed for $dev"
+        fi
+
+        if mountpoint -q "$mnt"; then
+            bashio::log.info "Mounted $dev successfully at $mnt"
+            log_mount_listing "$mnt"
+        else
             bashio::log.warning "Failed to mount $dev"
+            mount_failures=$((mount_failures + 1))
         fi
     done < <(echo "$mounts_json" | jq -r '.[]?')
+
+    if (( mount_failures > 0 )); then
+        bashio::log.fatal "$mount_failures configured mount(s) failed; stopping startup"
+        return 1
+    fi
+}
+
+ensure_watch_folder_exists() {
+    if [[ ! -d "$WATCH_DIR" ]]; then
+        bashio::log.fatal "watch_folder does not exist after mount checks: $WATCH_DIR"
+        return 1
+    fi
+
+    bashio::log.info "watch_folder is available: $WATCH_DIR"
 }
 
 run_filebot() {
@@ -402,6 +438,7 @@ inotify_loop() {
 main() {
     read_config
     mount_local_partitions
+    ensure_watch_folder_exists
     download_filebot
 
     if [[ "$USE_INOTIFY" == "true" ]] && command -v inotifywait >/dev/null 2>&1; then

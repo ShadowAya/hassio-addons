@@ -1,6 +1,6 @@
 name: FileBot Organizer
 description: Watch a folder and organize media files using FileBot CLI
-version: 0.1.0
+version: 0.1.1
 slug: filebot_organizer
 url: https://github.com/ShadowAya/hassio-addons
 startup: services
