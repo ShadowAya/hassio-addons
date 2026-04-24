@@ -177,16 +177,37 @@ log_mount_listing() {
 
 detect_filesystem_type() {
     local dev="$1"
+    local raw
     local fstype
 
-    fstype="$(blkid -s TYPE -o value "$dev" 2>/dev/null || true)"
+    raw="$(blkid "$dev" 2>/dev/null || true)"
+    if [[ -n "$raw" ]]; then
+        fstype="$(echo "$raw" | sed -n 's/.*TYPE="\([^"]\+\)".*/\1/p' | head -n 1 || true)"
+        if [[ -n "$fstype" ]]; then
+            printf '%s' "$fstype"
+            return 0
+        fi
+    fi
+
+    fstype="$(blkid -s TYPE -o value "$dev" 2>/dev/null | head -n 1 || true)"
     if [[ -n "$fstype" ]]; then
+        fstype="$(echo "$fstype" | sed -E 's/^.*TYPE="([^"]+)".*$/\1/; s/^.*TYPE=([^[:space:]]+).*$/\1/' | tr -d '[:space:]')"
+    fi
+
+    if [[ -n "$fstype" ]]; then
+        if echo "$fstype" | grep -Eq '^[A-Za-z0-9._+-]+$'; then
+            printf '%s' "$fstype"
+            return 0
+        fi
+    fi
+
+    fstype="$(lsblk -no FSTYPE "$dev" 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+    if echo "$fstype" | grep -Eq '^[A-Za-z0-9._+-]+$'; then
         printf '%s' "$fstype"
         return 0
     fi
 
-    fstype="$(lsblk -no FSTYPE "$dev" 2>/dev/null | head -n 1 || true)"
-    printf '%s' "$fstype"
+    printf ''
 }
 
 download_filebot() {
