@@ -280,17 +280,27 @@ read_config() {
 }
 
 mount_local_partitions() {
-    local mounts_json
+    local options_path
     local mount_failures
-    mounts_json="$(bashio::config 'mounts')"
+    local -a mount_items
+    options_path="/data/options.json"
     mount_failures="0"
 
-    if [[ "$mounts_json" == "null" ]]; then
+    if [[ ! -f "$options_path" ]]; then
+        bashio::log.warning "Options file not found at $options_path, skipping mount processing"
+        return 0
+    fi
+
+    mapfile -t mount_items < <(
+        jq -r '.mounts // [] | if type == "array" then .[] elif type == "string" then . else empty end' "$options_path" 2>/dev/null || true
+    )
+
+    if (( ${#mount_items[@]} == 0 )); then
         bashio::log.info "No mounts configured"
         return 0
     fi
 
-    while IFS= read -r mount_item; do
+    for mount_item in "${mount_items[@]}"; do
         mount_item="$(normalize_null "$mount_item")"
         [[ -z "$mount_item" ]] && continue
 
@@ -336,7 +346,7 @@ mount_local_partitions() {
             bashio::log.warning "Failed to mount $dev"
             mount_failures=$((mount_failures + 1))
         fi
-    done < <(echo "$mounts_json" | jq -r '.[]?')
+    done
 
     if (( mount_failures > 0 )); then
         bashio::log.fatal "$mount_failures configured mount(s) failed; stopping startup"
