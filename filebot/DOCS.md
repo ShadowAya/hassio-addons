@@ -87,6 +87,11 @@ If you use a USB disk attached directly to Home Assistant OS:
 3. The add-on mounts with `mount -t auto`.
 4. On stop, the add-on attempts to unmount mounted partitions cleanly.
 
+Notes:
+
+- The add-on attempts to detect filesystem type (for example `ext4`) and mounts with that type first.
+- AppArmor is disabled in this add-on config so mount operations can succeed with `SYS_ADMIN`.
+
 ## Important License Note
 
 FileBot is downloaded at startup and is not bundled in this image.

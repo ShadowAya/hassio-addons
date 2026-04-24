@@ -175,6 +175,20 @@ log_mount_listing() {
     done
 }
 
+detect_filesystem_type() {
+    local dev="$1"
+    local fstype
+
+    fstype="$(blkid -s TYPE -o value "$dev" 2>/dev/null || true)"
+    if [[ -n "$fstype" ]]; then
+        printf '%s' "$fstype"
+        return 0
+    fi
+
+    fstype="$(lsblk -no FSTYPE "$dev" 2>/dev/null | head -n 1 || true)"
+    printf '%s' "$fstype"
+}
+
 download_filebot() {
     if [[ -x "$FILEBOT_BIN" ]]; then
         bashio::log.info "Using existing FileBot CLI at $FILEBOT_BIN"
@@ -307,6 +321,9 @@ mount_local_partitions() {
         local dev
         local partition
         local mnt
+        local fstype
+        local mount_err_file
+        local mount_err
 
         if [[ "$mount_item" == /dev/* ]]; then
             dev="$mount_item"
@@ -332,12 +349,36 @@ mount_local_partitions() {
             continue
         fi
 
+        fstype="$(detect_filesystem_type "$dev")"
+        mount_err_file="$(mktemp)"
+        mount_err=""
+
         bashio::log.info "Mounting $dev at $mnt"
-        if mount -t auto "$dev" "$mnt"; then
-            MOUNTED_POINTS+=("$mnt")
+        if [[ -n "$fstype" ]]; then
+            bashio::log.info "Detected filesystem '$fstype' for $dev"
+            if mount -t "$fstype" "$dev" "$mnt" 2>"$mount_err_file"; then
+                MOUNTED_POINTS+=("$mnt")
+            else
+                mount_err="$(head -n 5 "$mount_err_file" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ +| +$//g')"
+                bashio::log.warning "Mount command failed for $dev: $mount_err"
+                if echo "$mount_err" | grep -qi "permission denied"; then
+                    bashio::log.warning "Permission denied while mounting. Ensure the add-on has SYS_ADMIN and AppArmor disabled."
+                fi
+            fi
         else
-            bashio::log.warning "Mount command failed for $dev"
+            bashio::log.warning "Could not detect filesystem for $dev, falling back to auto"
+            if mount -t auto "$dev" "$mnt" 2>"$mount_err_file"; then
+                MOUNTED_POINTS+=("$mnt")
+            else
+                mount_err="$(head -n 5 "$mount_err_file" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ +| +$//g')"
+                bashio::log.warning "Mount command failed for $dev: $mount_err"
+                if echo "$mount_err" | grep -qi "permission denied"; then
+                    bashio::log.warning "Permission denied while mounting. Ensure the add-on has SYS_ADMIN and AppArmor disabled."
+                fi
+            fi
         fi
+
+        rm -f "$mount_err_file"
 
         if mountpoint -q "$mnt"; then
             bashio::log.info "Mounted $dev successfully at $mnt"

@@ -9,6 +9,7 @@ init: false
 arch:
   - aarch64
   - amd64
+apparmor: false
 privileged:
   - SYS_ADMIN
 devices:
