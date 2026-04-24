@@ -5,7 +5,6 @@ readonly FILEBOT_JAR="/data/filebot.jar"
 readonly SEEN_FILE="/data/.seen_files"
 
 WATCH_DIR=""
-OUTPUT_DIR=""
 MOVIE_OUTPUT_TEMPLATE=""
 SHOW_OUTPUT_TEMPLATE=""
 FORMAT=""
@@ -197,7 +196,6 @@ download_filebot() {
 
 read_config() {
     WATCH_DIR="$(normalize_null "$(bashio::config 'watch_folder')")"
-    OUTPUT_DIR="$(normalize_null "$(bashio::config 'output_folder')")"
     MOVIE_OUTPUT_TEMPLATE="$(normalize_null "$(bashio::config 'movie_output_folder')")"
     SHOW_OUTPUT_TEMPLATE="$(normalize_null "$(bashio::config 'show_output_folder')")"
     FORMAT="$(normalize_null "$(bashio::config 'format')")"
@@ -216,16 +214,8 @@ read_config() {
         exit 1
     fi
 
-    if [[ -z "$MOVIE_OUTPUT_TEMPLATE" ]]; then
-        MOVIE_OUTPUT_TEMPLATE="$OUTPUT_DIR"
-    fi
-
-    if [[ -z "$SHOW_OUTPUT_TEMPLATE" ]]; then
-        SHOW_OUTPUT_TEMPLATE="$OUTPUT_DIR"
-    fi
-
     if [[ -z "$MOVIE_OUTPUT_TEMPLATE" || -z "$SHOW_OUTPUT_TEMPLATE" ]]; then
-        bashio::log.fatal "movie_output_folder and show_output_folder must be set (or provide output_folder fallback)"
+        bashio::log.fatal "movie_output_folder and show_output_folder must both be set"
         exit 1
     fi
 

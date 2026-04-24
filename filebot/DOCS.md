@@ -19,7 +19,6 @@ This add-on watches a folder for new media files and runs FileBot CLI to rename 
 
 ```yaml
 watch_folder: /mnt/sda1/upload
-output_folder: /mnt/sda1/external_media
 movie_output_folder: /mnt/sda1/external_media/movies
 show_output_folder: /mnt/sda1/external_media/shows/<SHOWNAME>
 movie_path_validation: strict
@@ -39,7 +38,6 @@ use_inotify: true
 ### Option Reference
 
 - `watch_folder` (string): Source folder to watch for new files.
-- `output_folder` (string): Legacy fallback root when movie/show output folders are not set.
 - `movie_output_folder` (string): Output path template for movie files.
 - `show_output_folder` (string): Output path template for TV show files.
 - `movie_path_validation` (enum): `none`, `strict`, `create_last`.
@@ -87,7 +85,7 @@ For an episode matched to `The Last of Us`, this resolves to:
 If you use a USB disk attached directly to Home Assistant OS:
 
 1. Add devices to `mounts`, for example `/dev/sda1`.
-2. Set `watch_folder` and `output_folder` to matching `/mnt/<partition>/...` paths.
+2. Set `watch_folder`, `movie_output_folder`, and `show_output_folder` to matching `/mnt/<partition>/...` paths.
 3. The add-on mounts with `mount -t auto`.
 4. On stop, the add-on attempts to unmount mounted partitions cleanly.
 

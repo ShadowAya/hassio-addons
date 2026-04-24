@@ -19,7 +19,6 @@ devices:
 
 options:
   watch_folder: /mnt/sda1/upload
-  output_folder: /mnt/sda1/external_media
   movie_output_folder: /mnt/sda1/external_media/movies
   show_output_folder: /mnt/sda1/external_media/shows/<SHOWNAME>
   movie_path_validation: strict
@@ -37,7 +36,6 @@ options:
 
 schema:
   watch_folder: str
-  output_folder: str
   movie_output_folder: str
   show_output_folder: str
   movie_path_validation: list(none|strict|create_last)
