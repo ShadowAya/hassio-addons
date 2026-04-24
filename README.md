@@ -9,7 +9,7 @@ This repository contains a Home Assistant community add-on that watches for new 
 ## Quick Start
 
 1. In Home Assistant, go to **Settings -> Add-ons -> Add-on Store -> Repositories**.
-2. Add your repository URL.
+2. Add this repository URL.
 3. Install the **FileBot** add-on.
 
 ## Notes
