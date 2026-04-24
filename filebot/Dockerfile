@@ -7,6 +7,7 @@ RUN apk add --no-cache \
         inotify-tools \
         wget \
         curl \
+        xz \
         mediainfo \
         jq \
         ntfs-3g \

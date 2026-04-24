@@ -14,6 +14,6 @@ This repository contains a Home Assistant community add-on that watches for new 
 
 ## Notes
 
-- FileBot is downloaded at container startup into `/data/filebot.jar`.
-- The FileBot jar is intentionally not stored in this repository or baked into the image.
+- FileBot is downloaded at container startup into `/data/filebot/`.
+- The FileBot bundle is intentionally not stored in this repository or baked into the image.
 - Review FileBot license terms before use: https://www.filebot.net/forums/viewtopic.php?t=5

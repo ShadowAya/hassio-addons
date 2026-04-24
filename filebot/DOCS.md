@@ -8,7 +8,7 @@ This add-on watches a folder for new media files and runs FileBot CLI to rename 
 ## Features
 
 - Watches for files via `inotifywait` or polling fallback
-- Downloads FileBot jar at runtime into `/data/filebot.jar`
+- Downloads the official FileBot portable CLI bundle at runtime into `/data/filebot/`
 - Supports mounting local partitions like `/dev/sda1` to `/mnt/sda1`
 - Supports `move`, `copy`, `hardlink`, and `symlink` actions
 - Supports separate output roots for movies and TV shows

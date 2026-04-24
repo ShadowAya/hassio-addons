@@ -1,7 +1,8 @@
 #!/usr/bin/with-contenv bashio
 set -euo pipefail
 
-readonly FILEBOT_JAR="/data/filebot.jar"
+readonly FILEBOT_DIR="/data/filebot"
+readonly FILEBOT_BIN="/data/filebot/filebot.sh"
 readonly SEEN_FILE="/data/.seen_files"
 
 WATCH_DIR=""
@@ -164,33 +165,59 @@ validate_output_path() {
 }
 
 download_filebot() {
-    if [[ -s "$FILEBOT_JAR" ]]; then
-        bashio::log.info "Using existing FileBot jar at $FILEBOT_JAR"
+    if [[ -x "$FILEBOT_BIN" ]]; then
+        bashio::log.info "Using existing FileBot CLI at $FILEBOT_BIN"
         return 0
     fi
 
-    bashio::log.info "Downloading FileBot jar to $FILEBOT_JAR"
+    local download_page
+    local portable_url
+    local archive_file
 
-    if curl -fsSL "https://get.filebot.net/filebot.jar" -o "$FILEBOT_JAR"; then
-        bashio::log.info "FileBot jar downloaded successfully"
-        return 0
-    fi
+    download_page="$(mktemp)"
+    archive_file="$(mktemp)"
 
-    local index_file
-    local jar_url
-    index_file="$(mktemp)"
-
-    curl -fsSL "https://get.filebot.net" -o "$index_file"
-    jar_url="$(grep -Eo 'https://[^" ]+\.jar' "$index_file" | head -n 1 || true)"
-    rm -f "$index_file"
-
-    if [[ -z "$jar_url" ]]; then
-        bashio::log.fatal "Could not determine FileBot jar download URL"
+    if ! curl -fsSL "https://www.filebot.net/download.html" -o "$download_page"; then
+        rm -f "$download_page" "$archive_file"
+        bashio::log.fatal "Could not fetch FileBot download page"
         exit 1
     fi
 
-    curl -fsSL "$jar_url" -o "$FILEBOT_JAR"
-    bashio::log.info "FileBot jar downloaded from discovered URL"
+    portable_url="$(grep -Eo 'https://get\.filebot\.net/filebot/FileBot_[^" )]+-portable\.tar\.xz' "$download_page" | head -n 1 || true)"
+    rm -f "$download_page"
+
+    if [[ -z "$portable_url" ]]; then
+        rm -f "$archive_file"
+        bashio::log.fatal "Could not determine FileBot portable download URL"
+        exit 1
+    fi
+
+    bashio::log.info "Downloading FileBot CLI bundle from $portable_url"
+
+    if ! curl -fsSL "$portable_url" -o "$archive_file"; then
+        rm -f "$archive_file"
+        bashio::log.fatal "Failed to download FileBot portable archive"
+        exit 1
+    fi
+
+    rm -rf "$FILEBOT_DIR"
+    mkdir -p "$FILEBOT_DIR"
+
+    if ! xz -dc "$archive_file" | tar -xf - -C "$FILEBOT_DIR"; then
+        rm -f "$archive_file"
+        bashio::log.fatal "Failed to extract FileBot portable archive"
+        exit 1
+    fi
+
+    rm -f "$archive_file"
+    chmod +x "$FILEBOT_BIN"
+
+    if [[ ! -x "$FILEBOT_BIN" ]]; then
+        bashio::log.fatal "FileBot CLI executable not found after extraction"
+        exit 1
+    fi
+
+    bashio::log.info "FileBot CLI installed at $FILEBOT_BIN"
 }
 
 read_config() {
@@ -337,7 +364,7 @@ run_filebot() {
 
     bashio::log.info "Processing file: $file (type=$media_type, output=$output_dir)"
 
-    if ! java -jar "$FILEBOT_JAR" -rename "$file" \
+    if ! "$FILEBOT_BIN" -rename "$file" \
         --output "$output_dir" \
         --format "$format" \
         --db "$DATABASE" \
