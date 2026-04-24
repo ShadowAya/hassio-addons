@@ -2,21 +2,16 @@ FROM ghcr.io/home-assistant/base:latest
 
 ARG BUILD_ARCH
 
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        openjdk-17-jre-headless \
+RUN apk add --no-cache \
+        openjdk17-jre-headless \
         inotify-tools \
         wget \
         curl \
         mediainfo \
         jq \
         ntfs-3g \
-        exfat-fuse \
-        exfatprogs \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+        fuse-exfat \
+        exfatprogs
 
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
