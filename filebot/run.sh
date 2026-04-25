@@ -3,6 +3,7 @@ set -euo pipefail
 
 readonly FILEBOT_DIR="/data/filebot"
 readonly FILEBOT_BIN="/data/filebot/filebot.sh"
+readonly FILEBOT_LICENSE_FILE="/ssl/FileBot_License.psm"
 readonly SEEN_FILE="/data/.seen_files"
 
 WATCH_DIR=""
@@ -17,7 +18,6 @@ POLL_INTERVAL="30"
 USE_INOTIFY="true"
 MOVIE_PATH_VALIDATION="strict"
 SHOW_PATH_VALIDATION="create_last"
-LICENSE_PGP_SIGNATURE=""
 
 MOUNTED_POINTS=()
 
@@ -268,28 +268,37 @@ download_filebot() {
 }
 
 apply_filebot_license() {
-    local license_file
-    local license_value
     local license_log
 
-    if [[ -z "$LICENSE_PGP_SIGNATURE" ]]; then
-        bashio::log.info "No FileBot license configured, skipping license apply"
+    if [[ ! -d "/ssl" ]]; then
+        bashio::log.warning "Directory /ssl is not available inside the container"
+        bashio::log.warning "Ensure config.yaml includes map: type=ssl so Home Assistant mounts SSL storage at /ssl"
         return 0
     fi
 
-    license_file="/data/filebot-license.psm"
+    if [[ ! -e "$FILEBOT_LICENSE_FILE" ]]; then
+        bashio::log.info "No FileBot license file found at $FILEBOT_LICENSE_FILE, skipping license apply"
+        return 0
+    fi
+
+    if [[ ! -f "$FILEBOT_LICENSE_FILE" ]]; then
+        bashio::log.warning "License path exists but is not a file: $FILEBOT_LICENSE_FILE"
+        return 0
+    fi
+
+    if [[ ! -s "$FILEBOT_LICENSE_FILE" ]]; then
+        bashio::log.warning "License file is empty: $FILEBOT_LICENSE_FILE"
+        return 0
+    fi
+
     license_log="$(mktemp)"
-    license_value="${LICENSE_PGP_SIGNATURE//\\n/$'\n'}"
 
-    printf '%s\n' "$license_value" > "$license_file"
-    chmod 600 "$license_file"
-
-    bashio::log.info "Applying FileBot license from configured PGP signature"
-    if "$FILEBOT_BIN" --license "$license_file" >"$license_log" 2>&1; then
+    bashio::log.info "Applying FileBot license from $FILEBOT_LICENSE_FILE"
+    if "$FILEBOT_BIN" --license "$FILEBOT_LICENSE_FILE" >"$license_log" 2>&1; then
         bashio::log.info "FileBot license applied successfully"
     else
         bashio::log.warning "Failed to apply FileBot license; continuing without license"
-        head -n 10 "$license_log" | while IFS= read -r line; do
+        head -n 30 "$license_log" | while IFS= read -r line; do
             bashio::log.warning "[license] $line"
         done
     fi
@@ -310,7 +319,6 @@ read_config() {
     USE_INOTIFY="$(normalize_null "$(bashio::config 'use_inotify')")"
     MOVIE_PATH_VALIDATION="$(normalize_null "$(bashio::config 'movie_path_validation')")"
     SHOW_PATH_VALIDATION="$(normalize_null "$(bashio::config 'show_path_validation')")"
-    LICENSE_PGP_SIGNATURE="$(normalize_null "$(bashio::config 'license_pgp')")"
 
     if [[ -z "$WATCH_DIR" ]]; then
         bashio::log.fatal "watch_folder must be set"

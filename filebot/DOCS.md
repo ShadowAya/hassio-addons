@@ -27,7 +27,6 @@ mounts:
   - /dev/sda1
 movie_format: "{n} ({y})"
 show_format: "{s00e00} - {t}"
-license_pgp: "-----BEGIN PGP SIGNATURE-----\\n..."
 database: TheTVDB
 action: move
 conflict: auto
@@ -45,7 +44,6 @@ use_inotify: true
 - `mounts` (list): Devices or partition names to mount under `/mnt`, for example `/dev/sda1` or `sda1`.
 - `movie_format` (string): FileBot format for movie files.
 - `show_format` (string): FileBot format for TV show files.
-- `license_pgp` (string): Optional FileBot license PGP signature text.
 - `database` (enum): `TheTVDB`, `TMDB`, `AniDB`, or `TheMovieDB`.
 - `action` (enum): `move`, `copy`, `hardlink`, or `symlink`.
 - `conflict` (enum): `auto`, `skip`, or `override`.
@@ -93,6 +91,7 @@ Notes:
 
 - The add-on attempts to detect filesystem type (for example `ext4`) and mounts with that type first.
 - AppArmor is disabled in this add-on config so mount operations can succeed with `SYS_ADMIN`.
+- The Home Assistant SSL directory is mounted read-only at `/ssl`.
 
 ## Important License Note
 
@@ -100,8 +99,15 @@ FileBot is downloaded at startup and is not bundled in this image.
 Review and comply with FileBot license terms before use:
 https://www.filebot.net/forums/viewtopic.php?t=5
 
-If you have a valid license signature, set `license_pgp` with the full PGP text.
-Literal `\\n` sequences are converted to new lines automatically on startup.
+Place your license file in Home Assistant SSL storage as:
+
+```text
+/ssl/FileBot_License.psm
+```
+
+Use the in-container path `/ssl/...` in this add-on context. You do not need to use the host OS absolute filesystem path.
+
+The add-on will automatically run `filebot --license /ssl/FileBot_License.psm` on startup.
 
 ## Troubleshooting
 
