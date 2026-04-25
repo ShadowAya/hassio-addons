@@ -17,6 +17,7 @@ POLL_INTERVAL="30"
 USE_INOTIFY="true"
 MOVIE_PATH_VALIDATION="strict"
 SHOW_PATH_VALIDATION="create_last"
+LICENSE_PGP_SIGNATURE=""
 
 MOUNTED_POINTS=()
 
@@ -266,6 +267,36 @@ download_filebot() {
     bashio::log.info "FileBot CLI installed at $FILEBOT_BIN"
 }
 
+apply_filebot_license() {
+    local license_file
+    local license_value
+    local license_log
+
+    if [[ -z "$LICENSE_PGP_SIGNATURE" ]]; then
+        bashio::log.info "No FileBot license configured, skipping license apply"
+        return 0
+    fi
+
+    license_file="/data/filebot-license.psm"
+    license_log="$(mktemp)"
+    license_value="${LICENSE_PGP_SIGNATURE//\\n/$'\n'}"
+
+    printf '%s\n' "$license_value" > "$license_file"
+    chmod 600 "$license_file"
+
+    bashio::log.info "Applying FileBot license from configured PGP signature"
+    if "$FILEBOT_BIN" --license "$license_file" >"$license_log" 2>&1; then
+        bashio::log.info "FileBot license applied successfully"
+    else
+        bashio::log.warning "Failed to apply FileBot license; continuing without license"
+        head -n 10 "$license_log" | while IFS= read -r line; do
+            bashio::log.warning "[license] $line"
+        done
+    fi
+
+    rm -f "$license_log"
+}
+
 read_config() {
     WATCH_DIR="$(normalize_null "$(bashio::config 'watch_folder')")"
     MOVIE_OUTPUT_TEMPLATE="$(normalize_null "$(bashio::config 'movie_output_folder')")"
@@ -279,6 +310,7 @@ read_config() {
     USE_INOTIFY="$(normalize_null "$(bashio::config 'use_inotify')")"
     MOVIE_PATH_VALIDATION="$(normalize_null "$(bashio::config 'movie_path_validation')")"
     SHOW_PATH_VALIDATION="$(normalize_null "$(bashio::config 'show_path_validation')")"
+    LICENSE_PGP_SIGNATURE="$(normalize_null "$(bashio::config 'license_pgp')")"
 
     if [[ -z "$WATCH_DIR" ]]; then
         bashio::log.fatal "watch_folder must be set"
@@ -512,6 +544,7 @@ main() {
     mount_local_partitions
     ensure_watch_folder_exists
     download_filebot
+    apply_filebot_license
 
     if [[ "$USE_INOTIFY" == "true" ]] && command -v inotifywait >/dev/null 2>&1; then
         if ! inotify_loop; then

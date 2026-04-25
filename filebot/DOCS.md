@@ -27,6 +27,7 @@ mounts:
   - /dev/sda1
 movie_format: "{n} ({y})"
 show_format: "{s00e00} - {t}"
+license_pgp: "-----BEGIN PGP SIGNATURE-----\\n..."
 database: TheTVDB
 action: move
 conflict: auto
@@ -44,6 +45,7 @@ use_inotify: true
 - `mounts` (list): Devices or partition names to mount under `/mnt`, for example `/dev/sda1` or `sda1`.
 - `movie_format` (string): FileBot format for movie files.
 - `show_format` (string): FileBot format for TV show files.
+- `license_pgp` (string): Optional FileBot license PGP signature text.
 - `database` (enum): `TheTVDB`, `TMDB`, `AniDB`, or `TheMovieDB`.
 - `action` (enum): `move`, `copy`, `hardlink`, or `symlink`.
 - `conflict` (enum): `auto`, `skip`, or `override`.
@@ -97,6 +99,9 @@ Notes:
 FileBot is downloaded at startup and is not bundled in this image.
 Review and comply with FileBot license terms before use:
 https://www.filebot.net/forums/viewtopic.php?t=5
+
+If you have a valid license signature, set `license_pgp` with the full PGP text.
+Literal `\\n` sequences are converted to new lines automatically on startup.
 
 ## Troubleshooting
 

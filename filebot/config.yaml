@@ -1,6 +1,6 @@
 name: FileBot Organizer
 description: Watch a folder and organize media files using FileBot CLI
-version: 0.1.1
+version: 0.1.2
 slug: filebot_organizer
 url: https://github.com/ShadowAya/hassio-addons
 startup: services
@@ -28,6 +28,7 @@ options:
     - /dev/sda1
   movie_format: "{n} ({y})"
   show_format: "{s00e00} - {t}"
+  license_pgp: ""
   database: TheTVDB
   action: move
   conflict: auto
@@ -44,6 +45,7 @@ schema:
     - str
   movie_format: str
   show_format: str
+  license_pgp: str
   database: list(TheTVDB|TMDB|AniDB|TheMovieDB)
   action: list(move|copy|hardlink|symlink)
   conflict: list(auto|skip|override)
